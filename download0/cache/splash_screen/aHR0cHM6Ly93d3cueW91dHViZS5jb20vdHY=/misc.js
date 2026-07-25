@@ -522,6 +522,55 @@ async function send_network(ip_address, port, sock_type, buffer) {
     syscall(SYSCALL.close, sock_fd);
 }
 
+function arrayBufferToBigInt(ab) {
+    const ptr = malloc(ab.byteLength);
+    const view = new Uint8Array(ab);
+    for (let i = 0; i < view.length; i++) {
+        write8(ptr + BigInt(i), BigInt(view[i]));
+    }
+    return ptr;
+}
+
+async function safe_read_file(path) {
+    try { return new Uint8Array(await read_file(path)); }
+    catch { return null; }
+}
+
+async function copy_binary_file(src_path, dst_path) {
+    let src_ptr = 0n;
+    let file_size = 0;
+
+    try {
+        const ab = await read_file(src_path);      
+        file_size = ab.byteLength;
+        src_ptr   = arrayBufferToBigInt(ab);
+    } catch (e) {
+        await log("Error: " + e.message);
+        return false;
+    }
+
+    const mode = 0x1ffn;                              
+    const dst_addr = alloc_string(dst_path);
+    const flags = O_CREAT | O_WRONLY | O_TRUNC;
+    const fd = syscall(SYSCALL.open, dst_addr, flags, mode);
+    if (fd === 0xffffffffffffffffn) {
+        await log("Failed to open destination: " + dst_path);
+        return false;
+    }
+    const written = syscall(SYSCALL.write, fd, src_ptr, BigInt(file_size));
+    syscall(SYSCALL.close, fd);
+
+    if (written !== BigInt(file_size)) {
+        await log("Write incomplete");
+        return false;
+    }
+
+    await log("Copied " + file_size + " bytes");
+    send_notification("Payload copied from USB!");
+    return true;
+}
+
+
 function kill_youtube() {
     const pid = syscall(SYSCALL.getpid);
     syscall(SYSCALL.kill, pid, SIGKILL);

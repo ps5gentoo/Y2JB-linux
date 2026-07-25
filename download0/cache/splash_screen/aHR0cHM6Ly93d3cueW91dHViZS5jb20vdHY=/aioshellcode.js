@@ -116,3 +116,98 @@ async function load_aioshellcode(arg_allproc, arg_master_pipe, arg_victim_pipe) 
     await load_bin();
 }
 
+async function bin_sender(payload_buf, payload_len) {
+    const TARGET_IP   = 0x0100007Fn;             
+    const TARGET_PORT = 9021;
+    const CHUNK_SIZE  = 64 * 1024;                
+
+    function htons(v) {
+        return ((v & 0xFFn) << 8n) | ((v >> 8n) & 0xFFn);
+    }
+
+    // ---- socket ------------------------------------------------
+    const sock = syscall(SYSCALL.socket, AF_INET, SOCK_STREAM, 0n);
+    if (sock === 0xffffffffffffffffn) {
+        await log("ERROR: socket() failed");
+        return false;
+    }
+
+    // ---- sockaddr_in -------------------------------------------
+    const addr = malloc(16);
+    for (let i = 0; i < 16; i++) write8(addr + BigInt(i), 0n);
+    write8 (addr + 1n, AF_INET);
+    write16(addr + 2n, htons(BigInt(TARGET_PORT)));
+    write32(addr + 4n, TARGET_IP);
+
+    // ---- connect -----------------------------------------------
+    const c = syscall(SYSCALL.connect, sock, addr, 16n);                                      // no longer needed
+    if (c === 0xffffffffffffffffn) {
+        syscall(SYSCALL.close, sock);
+        await log("ERROR: connect() failed");
+        return false;
+    }
+    await log("Connected!");
+
+    // ---- chunked send -----------------------------------------
+    let offset = 0n;
+    while (offset < BigInt(payload_len)) {
+        const remaining = BigInt(payload_len) - offset;
+        const chunk     = remaining < BigInt(CHUNK_SIZE) ? remaining : BigInt(CHUNK_SIZE);
+
+        const sent = syscall(SYSCALL.write, sock, payload_buf + offset, chunk);
+        if (sent <= 0n) {
+            syscall(SYSCALL.close, sock);
+            await log("ERROR: " + sent);
+            return false;
+        }
+        offset += sent;
+    }
+
+    syscall(SYSCALL.close, sock);
+    await log("Sent " + payload_len + " bytes successfully");
+    return true;
+}
+
+async function autoload() {
+    const INTERNAL          = "/data/ps5-linux-loader.elf";
+    const PAYLOAD_NAME      = "ps5-linux-loader.elf";
+    const PAYLOAD_MAX       = 5 * 1024 * 1024;
+    const payload_download0_path = "/mnt/sandbox/" + get_title_id() +
+                                   "_000/download0/cache/splash_screen/" +
+                                   "aHR0cHM6Ly93d3cueW91dHViZS5jb20vdHY=/ps5-linux-loader.elf";
+
+    // usb check                            
+    const usb_paths = [];
+    for (let i = 0; i <= 7; i++) usb_paths.push(`/mnt/usb${i}/${PAYLOAD_NAME}`);
+    let usb_path = null;
+    for (const p of usb_paths) if (file_exists(p)) { usb_path = p; break; }
+    // either usb and internal not exist
+    if (!usb_path && !file_exists(INTERNAL)) {
+        await log("[-] payload not found in usb & internal storage!");
+        send_notification("payload not found, executing default payload at download0");
+        // check at download0
+        if (!file_exists(payload_download0_path)) {
+            await log("[-] fallback payload missing!");
+            send_notification("fallback payload missing!");
+            return;
+        }
+        // copy to internal
+        const ok = await copy_binary_file(payload_download0_path, INTERNAL);
+        if (!ok) return;                
+    }
+    else if (usb_path) {
+        // copy new payload from usb
+        const ok = await copy_binary_file(usb_path, INTERNAL);
+        if (!ok) return;
+    } else {
+        await log("using internal payload: " + INTERNAL);
+    }
+    // sent payload
+    const ab = await read_file(INTERNAL);
+    const len = ab.byteLength;
+    if (len === 0 || len > PAYLOAD_MAX) throw new Error("size check failed");
+
+    const ptr = arrayBufferToBigInt(ab);
+    const ok = await bin_sender(ptr, len);        
+    if (ok) send_notification("Payload loaded!\nClosing Y2JB...");
+}

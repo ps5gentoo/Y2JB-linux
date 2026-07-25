@@ -6,7 +6,7 @@
 */
 
 const version_string = "Y2JB 1.7 by Gezine";
-
+const auto_version_string = "autoY2JB v0.1";
 function load_localscript(src) {
     return new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -127,6 +127,10 @@ async function log(msg) {
 
 function toHex(num) {
     return '0x' + BigInt(num).toString(16).padStart(16, '0');
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function trigger() {
@@ -1005,8 +1009,9 @@ function trigger() {
         // MAIN EXECUTION //
         ////////////////////
 
-        await load_localscript('remotejsloader.js'); 
-
+        //await load_localscript('remotejsloader.js'); 
+        sleep(1000);
+        await load_localscript('lapse.js'); 
         
     } catch (e) {                
         await log('EXCEPTION: ' + e.message);
