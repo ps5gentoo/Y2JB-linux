@@ -1,3 +1,15 @@
+# ![PS5](https://img.shields.io/badge/-PS5-000000?style=flat&logo=playstation&logoColor=white) Y2JB-Linux for FW (4.03 - 7.61)
+
+Userland code execution using the PS5 YouTube app for booting into Linux.
+
+Just replace the file over FTP.
+
+
+
+
+
+https://github.com/user-attachments/assets/3872c27b-9c38-48a4-abb3-44496069691e
+
 # Y2JB
 
 Userland code execution using the PS5 YouTube app.
